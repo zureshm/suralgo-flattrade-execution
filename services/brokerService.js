@@ -157,9 +157,9 @@ async function getFunds() {
 
     return {
       success: true,
-      availableMargin: parseFloat(response.cash || "0"),
-      totalCredits: parseFloat(response.cash || "0") + parseFloat(response.marginused || "0"),
-      openingBalance: parseFloat(response.payin || response.cash || "0"),
+      availableMargin: parseFloat(response.cash || "0") - parseFloat(response.marginused || "0"),
+      totalCredits: parseFloat(response.cash || "0"),
+      openingBalance: parseFloat(response.openbal || response.cash || "0"),
       utilization: parseFloat(response.marginused || "0"),
       peakMargin: parseFloat(response.peak_mar || "0"),
       marginPercentage: parseFloat(response.marginper || "0"),
