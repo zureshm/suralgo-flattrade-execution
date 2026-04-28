@@ -157,14 +157,14 @@ async function getFunds() {
 
     return {
       success: true,
-      cash: parseFloat(response.cash || "0"),
-      marginUsed: parseFloat(response.marginused || "0"),
-      payin: parseFloat(response.payin || "0"),
-      payout: parseFloat(response.payout || "0"),
-      turnover: parseFloat(response.turnover || "0"),
-      pendingOrderValue: parseFloat(response.pendordval || "0"),
+      availableMargin: parseFloat(response.cash || "0"),
+      totalCredits: parseFloat(response.cash || "0") + parseFloat(response.marginused || "0"),
+      openingBalance: parseFloat(response.payin || response.cash || "0"),
+      utilization: parseFloat(response.marginused || "0"),
+      peakMargin: parseFloat(response.peak_mar || "0"),
+      marginPercentage: parseFloat(response.marginper || "0"),
       unrealizedMtm: parseFloat(response.urmtom || "0"),
-      grossExposure: parseFloat(response.grexpo || "0"),
+      derivativeIntradayMargin: parseFloat(response.blk_deri_intra || "0"),
       raw: response,
     };
   } catch (error) {
