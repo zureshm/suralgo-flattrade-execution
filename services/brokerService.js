@@ -206,14 +206,34 @@ async function placeOrder({ symbol, qty, side, orderType, productType, price, tr
 
   // Map friendly names to Flattrade NorenAPI values
   const buySell = side === "BUY" ? "B" : "S";
-  const priceType = mapOrderType(orderType);
+  let priceType = mapOrderType(orderType);
   const product = mapProductType(productType);
+
+  // Flattrade does NOT allow MKT orders via API — convert to LMT at current LTP
+  let orderPrice = price;
+  if (priceType === "MKT") {
+    try {
+      const quoteRes = await norenPost("GetQuotes", { exch: exchange, token: tradingSymbol });
+      const ltp = parseFloat(quoteRes.lp);
+      if (Number.isFinite(ltp) && ltp > 0) {
+        // Add buffer: +0.5% for BUY, -0.5% for SELL to ensure fill
+        const buffer = side === "BUY" ? 1.005 : 0.995;
+        orderPrice = (Math.round(ltp * buffer * 20) / 20).toFixed(2); // tick size 0.05
+        priceType = "LMT";
+        logger.info(`MKT→LMT conversion: LTP=${ltp}, order price=${orderPrice} (${side})`);
+      } else {
+        logger.warn(`Could not fetch LTP for ${tradingSymbol}, trying with MKT anyway`);
+      }
+    } catch (err) {
+      logger.warn(`LTP fetch failed for ${tradingSymbol}: ${err.message}, trying with MKT`);
+    }
+  }
 
   const orderParams = {
     exch: exchange,
     tsym: tradingSymbol,
     qty: String(qty),
-    prc: String(price || "0"),
+    prc: String(orderPrice || "0"),
     trgprc: String(triggerPrice || "0"),
     prd: product,
     trantype: buySell,
