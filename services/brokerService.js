@@ -181,13 +181,28 @@ function ensureSession() {
   }
 }
 
+// ── Symbol format conversion ─────────────────────────────────────────────────
+// Angel One:  NIFTY28APR2624400CE  → {UNDERLYING}{DD}{MON}{YY}{STRIKE}{CE|PE}
+// Flattrade:  NIFTY28APR26C24400   → {UNDERLYING}{DD}{MON}{YY}{C|P}{STRIKE}
+
+function convertSymbol(symbol) {
+  const match = symbol.match(/^([A-Z]+)(\d{2})([A-Z]{3})(\d{2})(\d+)(CE|PE)$/);
+  if (!match) return symbol; // not an Angel One option format, pass through
+
+  const [, underlying, day, month, year, strike, optType] = match;
+  const ftOptType = optType === "CE" ? "C" : "P";
+  const converted = `${underlying}${day}${month}${year}${ftOptType}${strike}`;
+  logger.info(`Symbol converted: ${symbol} → ${converted}`);
+  return converted;
+}
+
 // ── Place Order ─────────────────────────────────────────────────────────────
 
 async function placeOrder({ symbol, qty, side, orderType, productType, price, triggerPrice }) {
   ensureSession();
 
   const exchange = "NFO";
-  const tradingSymbol = symbol;
+  const tradingSymbol = convertSymbol(symbol);
 
   // Map friendly names to Flattrade NorenAPI values
   const buySell = side === "BUY" ? "B" : "S";
