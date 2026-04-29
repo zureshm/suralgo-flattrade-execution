@@ -255,10 +255,49 @@ async function placeOrder({ symbol, qty, side, orderType, productType, price, tr
     logger.order("Order response", response);
 
     if (response.stat === "Ok" && response.norenordno) {
+      // Verify actual order status — exchange may reject after acceptance
+      const orderId = response.norenordno;
+      let finalStatus = "PENDING";
+      let rejectionReason = "";
+
+      // Poll up to 5 times with 500ms delay to let the exchange process
+      for (let i = 0; i < 5; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const hist = await norenPost("SingleOrdHist", { norenordno: orderId });
+          const entries = Array.isArray(hist) ? hist : [hist];
+          const latest = entries[entries.length - 1];
+          if (latest && latest.status) {
+            finalStatus = latest.status.toUpperCase();
+            if (finalStatus === "REJECTED") {
+              rejectionReason = latest.rejreason || latest.rejby || "Unknown reason";
+              break;
+            }
+            if (finalStatus === "COMPLETE" || finalStatus === "TRADED" || finalStatus === "FILLED") {
+              break;
+            }
+          }
+        } catch (pollErr) {
+          logger.warn(`Order status poll ${i + 1} failed: ${pollErr.message}`);
+        }
+      }
+
+      logger.order(`Order ${orderId} final status: ${finalStatus}`, { rejectionReason });
+
+      if (finalStatus === "REJECTED") {
+        return {
+          success: false,
+          orderId,
+          message: `Order rejected by exchange: ${rejectionReason}`,
+          raw: response,
+        };
+      }
+
       return {
         success: true,
-        orderId: response.norenordno,
-        message: "Order placed",
+        orderId,
+        message: `Order ${finalStatus === "PENDING" ? "placed (status pending)" : "filled"}`,
+        status: finalStatus,
         raw: response,
       };
     }
