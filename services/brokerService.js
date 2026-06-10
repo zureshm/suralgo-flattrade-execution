@@ -266,10 +266,10 @@ async function placeOrder({ symbol, qty, side, orderType, productType, price, tr
         try {
           const hist = await norenPost("SingleOrdHist", { norenordno: orderId });
           const entries = Array.isArray(hist) ? hist : [hist];
-          const latest = entries[entries.length - 1];
+          const latest = entries[0]; // SingleOrdHist returns newest-first
           if (latest && latest.status) {
             finalStatus = latest.status.toUpperCase();
-            if (finalStatus === "REJECTED") {
+            if (finalStatus === "REJECTED" || finalStatus === "REJECT") {
               rejectionReason = latest.rejreason || latest.rejby || "Unknown reason";
               break;
             }
@@ -284,7 +284,7 @@ async function placeOrder({ symbol, qty, side, orderType, productType, price, tr
 
       logger.order(`Order ${orderId} final status: ${finalStatus}`, { rejectionReason });
 
-      if (finalStatus === "REJECTED") {
+      if (finalStatus === "REJECTED" || finalStatus === "REJECT") {
         return {
           success: false,
           orderId,
