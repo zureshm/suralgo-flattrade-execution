@@ -181,6 +181,13 @@ function ensureSession() {
   }
 }
 
+// ── Exchange inference ───────────────────────────────────────────────────────
+// SENSEX options → BFO, everything else → NFO
+function getExchangeForSymbol(symbol) {
+  if (symbol && symbol.startsWith("SENSEX")) return "BFO";
+  return "NFO";
+}
+
 // ── Symbol format conversion ─────────────────────────────────────────────────
 // Angel One:  NIFTY28APR2624400CE  → {UNDERLYING}{DD}{MON}{YY}{STRIKE}{CE|PE}
 // Flattrade:  NIFTY28APR26C24400   → {UNDERLYING}{DD}{MON}{YY}{C|P}{STRIKE}
@@ -196,13 +203,62 @@ function convertSymbol(symbol) {
   return converted;
 }
 
+// Cache for BFO symbol lookups (Angel One format → Flattrade tsym)
+const bfoSymbolCache = {};
+
+// Resolve Flattrade trading symbol for BFO (SENSEX) via SearchScrip API.
+// NorenAPI BFO uses a different symbol format (e.g., SENSEX24N2273200PE)
+// that can't be derived from the Angel One format via regex.
+async function resolveBfoSymbol(symbol) {
+  if (bfoSymbolCache[symbol]) return bfoSymbolCache[symbol];
+
+  const optTypeMatch = symbol.match(/(CE|PE)$/);
+  if (!optTypeMatch) return symbol;
+  const optType = optTypeMatch[1];
+
+  // Extract strike from Angel One symbol (digits before CE/PE)
+  const strikeMatch = symbol.match(/(\d+)(CE|PE)$/);
+  if (!strikeMatch) return symbol;
+  const strike = strikeMatch[1];
+
+  try {
+    const result = await norenPost("SearchScrip", { stext: "SENSEX", exch: "BFO" });
+    const values = result.values || [];
+
+    for (const v of values) {
+      if (v.optt === optType && v.tsym) {
+        // Check if the Flattrade tsym contains the same strike + option type
+        if (v.tsym.includes(strike) && v.tsym.endsWith(optType)) {
+          bfoSymbolCache[symbol] = v.tsym;
+          logger.info(`BFO symbol resolved via SearchScrip: ${symbol} → ${v.tsym}`);
+          return v.tsym;
+        }
+      }
+    }
+
+    logger.warn(`SearchScrip found no BFO match for ${symbol} (strike=${strike}, optType=${optType})`);
+    return symbol;
+  } catch (err) {
+    logger.warn(`SearchScrip failed for ${symbol}: ${err.message}`);
+    return symbol;
+  }
+}
+
+// Resolve Flattrade trading symbol — async for BFO (SearchScrip), sync for NFO (regex)
+async function resolveFlattradeSymbol(symbol, exchange) {
+  if (exchange === "BFO") {
+    return resolveBfoSymbol(symbol);
+  }
+  return convertSymbol(symbol);
+}
+
 // ── Place Order ─────────────────────────────────────────────────────────────
 
-async function placeOrder({ symbol, qty, side, orderType, productType, price, triggerPrice }) {
+async function placeOrder({ symbol, qty, side, orderType, productType, price, triggerPrice, exchange: providedExchange }) {
   ensureSession();
 
-  const exchange = "NFO";
-  const tradingSymbol = convertSymbol(symbol);
+  const exchange = providedExchange || getExchangeForSymbol(symbol);
+  const tradingSymbol = await resolveFlattradeSymbol(symbol, exchange);
 
   // Map friendly names to Flattrade NorenAPI values
   const buySell = side === "BUY" ? "B" : "S";
@@ -325,6 +381,7 @@ async function exitOrder({ symbol, qty, side }) {
     side: exitSide,
     orderType: "MARKET",
     productType: "INTRADAY",
+    exchange: getExchangeForSymbol(symbol),
   });
 }
 
