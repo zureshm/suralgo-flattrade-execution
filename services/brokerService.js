@@ -272,8 +272,8 @@ async function placeOrder({ symbol, qty, side, orderType, productType, price, tr
       const quoteRes = await norenPost("GetQuotes", { exch: exchange, token: tradingSymbol });
       const ltp = parseFloat(quoteRes.lp);
       if (Number.isFinite(ltp) && ltp > 0) {
-        // Add buffer: +0.5% for BUY, -0.5% for SELL to ensure fill
-        const buffer = side === "BUY" ? 1.005 : 0.995;
+        // Add buffer: +5% for BUY, -5% for SELL to ensure fill (Flattrade API v2 blocks MKT orders)
+        const buffer = side === "BUY" ? 1.05 : 0.95;
         orderPrice = (Math.round(ltp * buffer * 20) / 20).toFixed(2); // tick size 0.05
         priceType = "LMT";
         logger.info(`MKT→LMT conversion: LTP=${ltp}, order price=${orderPrice} (${side})`);
